@@ -614,8 +614,15 @@
         document.getElementById('view-student').classList.remove('hidden');
       } else if (mode === 'teacher') {
         document.getElementById('view-teacher').classList.remove('hidden');
-        initWorldMap();
-        fetchDashboardData(false);
+        // 화면이 렌더링된 직후 지도를 초기화하고 크기를 재계산합니다.
+        requestAnimationFrame(() => {
+          initWorldMap();
+          if (leafletMap) {
+            leafletMap.invalidateSize(true);
+            setTimeout(() => leafletMap.invalidateSize(true), 300);
+          }
+          fetchDashboardData(false);
+        });
         // 10초 간격 자동 폴링 시작
         pollingInterval = setInterval(() => fetchDashboardData(false), 10000);
       }
@@ -1012,7 +1019,7 @@
     // =========================================================================
     function initWorldMap() {
       if (leafletMap) {
-        setTimeout(() => leafletMap.invalidateSize(), 200);
+        leafletMap.invalidateSize(true);
         return;
       }
 
@@ -1024,14 +1031,31 @@
         worldCopyJump: true
       });
 
-      // 깔끔한 파스텔 톤 지도 타일 (CartoDB Voyager)
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap &copy; CARTO',
-        subdomains: 'abcd',
+      // GitHub Pages 및 학교망에서 차단(403) 없이 안정적으로 열리는 Esri World Street Map 적용
+      const primaryLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles &copy; Esri',
         maxZoom: 18
-      }).addTo(leafletMap);
+      });
 
+      // 백업용 CartoDB Voyager 타일
+      primaryLayer.on('tileerror', function() {
+        if (!leafletMap._fallbackAdded) {
+          leafletMap._fallbackAdded = true;
+          L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap &copy; CARTO',
+            subdomains: 'abcd',
+            maxZoom: 18
+          }).addTo(leafletMap);
+        }
+      });
+
+      primaryLayer.addTo(leafletMap);
       markersLayer = L.layerGroup().addTo(leafletMap);
+
+      // 브라우저 창 크기 변경 시 지도 비율 자동 보정
+      window.addEventListener('resize', () => {
+        if (leafletMap) leafletMap.invalidateSize(true);
+      });
     }
 
     function setDashboardFilter(filterName) {
