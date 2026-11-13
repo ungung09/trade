@@ -1,0 +1,1214 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>창업주의 비밀 가방 - 세계의 여러 나라와 경제 교류</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Google Fonts: Jua (타이틀용) & Noto Sans KR (본문용) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+  
+  <!-- Leaflet.js (세계지도) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
+  <!-- Font Awesome (아이콘) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+  <style>
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+      background-color: #F0F4F8;
+      color: #1E293B;
+    }
+    .font-jua {
+      font-family: 'Jua', sans-serif;
+    }
+    
+    /* 커스텀 스크롤바 */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #F1F5F9;
+      border-radius: 8px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #CBD5E1;
+      border-radius: 8px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94A3B8;
+    }
+
+    /* 지도 원형 숫자 마커 스타일 */
+    .country-bubble-marker {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 9999px;
+      background: radial-gradient(circle at 30% 30%, #F59E0B, #EA580C);
+      color: #FFFFFF;
+      font-weight: 900;
+      border: 3px solid #FFFFFF;
+      box-shadow: 0 4px 12px rgba(234, 88, 12, 0.45);
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+      cursor: pointer;
+    }
+    .country-bubble-marker:hover {
+      transform: scale(1.15);
+      z-index: 1000 !important;
+    }
+
+    /* Leaflet 팝업 커스텀 */
+    .leaflet-popup-content-wrapper {
+      border-radius: 16px;
+      padding: 4px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
+    }
+    .leaflet-popup-content {
+      margin: 12px 14px;
+      font-family: 'Noto Sans KR', sans-serif;
+    }
+
+    /* 가방 담기 애니메이션 */
+    @keyframes popBounce {
+      0% { transform: scale(0.8); opacity: 0; }
+      50% { transform: scale(1.05); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .animate-pop {
+      animation: popBounce 0.35s ease-out forwards;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- =====================================================================
+       [설정 영역] Google Apps Script 웹 앱 URL을 아래에 붙여넣으세요!
+       비워두면 브라우저 내장 데모 모드로 즉시 체험할 수 있습니다.
+  ====================================================================== -->
+  <script>
+    const GOOGLE_SCRIPT_URL = ""; // 예: "https://script.google.com/macros/s/AKfycbx.../exec"
+    const TEACHER_PASSWORD = "1234"; // 교사용 대시보드 비밀번호
+  </script>
+
+  <!-- 공통 알림 토스트 / 모달 컨테이너 -->
+  <div id="toast-container" class="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 w-11/12 max-w-md pointer-events-none"></div>
+
+  <!-- 확인 모달 (alert / confirm 대체용) -->
+  <div id="confirm-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9998] hidden items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl animate-pop">
+      <div class="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center text-2xl mb-4 mx-auto">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+      </div>
+      <h3 id="confirm-title" class="text-xl font-bold text-center text-slate-800 mb-2">확인해 주세요</h3>
+      <p id="confirm-message" class="text-sm text-slate-600 text-center mb-6 leading-relaxed"></p>
+      <div class="flex gap-3">
+        <button id="confirm-cancel-btn" class="flex-1 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition">취소</button>
+        <button id="confirm-ok-btn" class="flex-1 py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-md transition">확인</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =====================================================================
+       1. 초기 진입 화면 (모드 선택)
+  ====================================================================== -->
+  <section id="view-landing" class="flex-1 flex flex-col items-center justify-center p-4 sm:p-8 bg-gradient-to-br from-sky-100 via-indigo-50 to-amber-50">
+    <div class="max-w-3xl w-full text-center">
+      <!-- 상단 배지 -->
+      <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/90 border border-indigo-200 text-indigo-700 text-xs sm:text-sm font-bold shadow-sm mb-4">
+        <i class="fa-solid fa-earth-americas text-indigo-500"></i>
+        <span>초등학교 사회과 · 세계의 여러 나라와 경제 교류</span>
+      </div>
+
+      <!-- 타이틀 -->
+      <div class="flex items-center justify-center gap-3 mb-3">
+        <span class="text-4xl sm:text-6xl drop-shadow-sm">🧳</span>
+        <h1 class="font-jua text-4xl sm:text-6xl text-slate-800 tracking-wide">창업주의 비밀 가방</h1>
+      </div>
+      <p class="text-slate-600 text-sm sm:text-lg max-w-xl mx-auto mb-8 sm:mb-10 leading-relaxed">
+        인터넷 마트에서 찾은 물건들은 어느 나라에서 왔을까요?<br class="hidden sm:inline">
+        원산지를 조사해 가방에 담고, 세계지도로 한눈에 탐험해 봅시다!
+      </p>
+
+      <!-- 데모 모드 안내 배너 (URL 미입력 시 표시) -->
+      <div id="demo-badge-landing" class="hidden max-w-lg mx-auto mb-6 px-4 py-2.5 rounded-2xl bg-amber-100/90 border border-amber-300 text-amber-800 text-xs sm:text-sm flex items-center justify-center gap-2">
+        <i class="fa-solid fa-flask"></i>
+        <span>현재 <strong>연습(로컬 데모) 모드</strong>로 작동 중입니다. (Google Sheets 연동 전)</span>
+      </div>
+
+      <!-- 역할 선택 카드 -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6 max-w-2xl mx-auto">
+        <!-- 학생용 카드 -->
+        <button onclick="switchMode('student')" class="group relative bg-white hover:bg-indigo-600 rounded-3xl p-6 sm:p-8 shadow-lg hover:shadow-2xl border-2 border-indigo-100 hover:border-indigo-600 transition-all duration-300 text-left flex flex-col justify-between">
+          <div>
+            <div class="w-16 h-16 rounded-2xl bg-indigo-100 group-hover:bg-white/20 text-indigo-600 group-hover:text-white flex items-center justify-center text-3xl mb-5 transition">
+              <i class="fa-solid fa-bag-shopping"></i>
+            </div>
+            <h2 class="font-jua text-2xl sm:text-3xl text-slate-800 group-hover:text-white mb-2">학생용 입력 화면</h2>
+            <p class="text-slate-500 group-hover:text-indigo-100 text-sm leading-relaxed">
+              마트에서 찾은 물건 이름, 종류, 원산지 국가를 입력해 비밀 가방에 담아요.
+            </p>
+          </div>
+          <div class="mt-6 inline-flex items-center gap-2 text-indigo-600 group-hover:text-white font-bold text-sm">
+            <span>조사 시작하기</span>
+            <i class="fa-solid fa-arrow-right group-hover:translate-x-1 transition-transform"></i>
+          </div>
+        </button>
+
+        <!-- 교사용 카드 -->
+        <button onclick="openTeacherAuth()" class="group relative bg-white hover:bg-amber-500 rounded-3xl p-6 sm:p-8 shadow-lg hover:shadow-2xl border-2 border-amber-100 hover:border-amber-500 transition-all duration-300 text-left flex flex-col justify-between">
+          <div>
+            <div class="w-16 h-16 rounded-2xl bg-amber-100 group-hover:bg-white/20 text-amber-600 group-hover:text-white flex items-center justify-center text-3xl mb-5 transition">
+              <i class="fa-solid fa-map-location-dot"></i>
+            </div>
+            <h2 class="font-jua text-2xl sm:text-3xl text-slate-800 group-hover:text-white mb-2">교사용 대시보드</h2>
+            <p class="text-slate-500 group-hover:text-amber-50 text-sm leading-relaxed">
+              학생들이 등록한 물건의 원산지를 실시간 세계지도와 통계로 확인해요.
+            </p>
+          </div>
+          <div class="mt-6 inline-flex items-center gap-2 text-amber-600 group-hover:text-white font-bold text-sm">
+            <i class="fa-solid fa-lock text-xs"></i>
+            <span>대시보드 열기</span>
+            <i class="fa-solid fa-arrow-right group-hover:translate-x-1 transition-transform"></i>
+          </div>
+        </button>
+      </div>
+    </div>
+
+    <!-- 교사 비밀번호 입력 모달 -->
+    <div id="teacher-auth-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+      <div class="bg-white rounded-3xl max-w-sm w-full p-6 sm:p-7 shadow-2xl animate-pop">
+        <div class="flex justify-between items-center mb-4">
+          <div class="flex items-center gap-2 text-amber-600 font-bold">
+            <i class="fa-solid fa-shield-halved text-xl"></i>
+            <span>선생님 인증</span>
+          </div>
+          <button onclick="closeTeacherAuth()" class="w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <p class="text-sm text-slate-600 mb-4">교사용 대시보드에 접속하려면 비밀번호를 입력하세요. <span class="text-xs text-slate-400">(기본값: 1234)</span></p>
+        <form onsubmit="verifyTeacherPassword(event)">
+          <input type="password" id="teacher-pw-input" inputmode="numeric" placeholder="비밀번호 입력" required
+            class="w-full px-4 py-3.5 rounded-2xl border-2 border-slate-200 focus:border-amber-500 focus:outline-none text-center text-xl tracking-widest font-bold mb-4">
+          <button type="submit" class="w-full py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-base shadow-md transition">
+            입장하기
+          </button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- =====================================================================
+       2. 학생용 입력 화면 (태블릿/스마트폰 최적화)
+  ====================================================================== -->
+  <section id="view-student" class="hidden flex-1 flex flex-col bg-slate-50">
+    <!-- 상단 헤더 -->
+    <header class="bg-indigo-600 text-white px-4 py-3.5 shadow-md sticky top-0 z-30">
+      <div class="max-w-xl mx-auto flex items-center justify-between">
+        <button onclick="switchMode('landing')" class="flex items-center gap-1.5 text-indigo-100 hover:text-white text-sm font-bold py-1 px-2 rounded-lg hover:bg-indigo-500 transition">
+          <i class="fa-solid fa-house"></i>
+          <span>처음으로</span>
+        </button>
+        <div class="flex items-center gap-2">
+          <span class="text-xl">🧳</span>
+          <h1 class="font-jua text-xl tracking-wide">창업주의 비밀 가방</h1>
+        </div>
+        <div class="bg-indigo-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5">
+          <i class="fa-solid fa-box-open text-amber-300"></i>
+          <span>내 가방: <span id="my-bag-count" class="text-amber-300">0</span>개</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- 입력 폼 메인 컨테이너 -->
+    <main class="flex-1 max-w-xl w-full mx-auto p-4 sm:p-6 pb-12">
+      <!-- 제출 완료 성공 배너 -->
+      <div id="student-success-banner" class="hidden mb-5 bg-emerald-500 text-white rounded-3xl p-5 shadow-lg animate-pop">
+        <div class="flex items-center gap-4">
+          <div class="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center text-2xl shrink-0">
+            🎒✨
+          </div>
+          <div class="flex-1">
+            <h3 class="font-jua text-xl">가방에 물건이 담겼습니다!</h3>
+            <p id="student-success-detail" class="text-emerald-50 text-xs sm:text-sm mt-0.5">칠판의 세계지도에서 원산지를 확인해 보세요!</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 입력 카드 -->
+      <form id="student-form" onsubmit="handleStudentSubmit(event)" class="bg-white rounded-3xl p-5 sm:p-7 shadow-sm border border-slate-200/80 space-y-6">
+        
+        <!-- 1. 학급 번호 -->
+        <div>
+          <label class="block text-sm font-bold text-slate-700 mb-2">
+            <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-black mr-1.5">1</span>
+            나의 번호 (학급 번호)
+          </label>
+          <div class="flex items-center gap-3">
+            <input type="number" id="input-student-num" min="1" max="50" required placeholder="예: 7"
+              class="w-32 px-4 py-3 rounded-2xl border-2 border-slate-200 focus:border-indigo-500 focus:outline-none text-lg font-bold text-center text-slate-800">
+            <span class="text-slate-600 font-bold">번 창업주</span>
+            <span class="text-xs text-slate-400 ml-auto">* 이름 대신 번호만 적어요!</span>
+          </div>
+        </div>
+
+        <!-- 2. 물건 이름 -->
+        <div>
+          <label for="input-item-name" class="block text-sm font-bold text-slate-700 mb-2">
+            <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-black mr-1.5">2</span>
+            인터넷 마트에서 찾은 물건 이름
+          </label>
+          <input type="text" id="input-item-name" required maxlength="30" placeholder="예: 냉동 블루베리, 무선 마우스, 운동화"
+            class="w-full px-4 py-3.5 rounded-2xl border-2 border-slate-200 focus:border-indigo-500 focus:outline-none text-base font-medium text-slate-800">
+        </div>
+
+        <!-- 3. 물건 종류 (카테고리 칩) -->
+        <div>
+          <label class="block text-sm font-bold text-slate-700 mb-2.5">
+            <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-black mr-1.5">3</span>
+            물건 종류 (카테고리 선택)
+          </label>
+          <input type="hidden" id="input-category" required>
+          <div id="category-chips" class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+            <button type="button" data-cat="식품" onclick="selectCategory('식품', this)"
+              class="cat-chip py-3 px-3 rounded-2xl border-2 border-slate-200 bg-slate-50 hover:bg-indigo-50 text-slate-700 font-bold text-sm flex items-center justify-center gap-2 transition">
+              <span>🍎</span><span>식품</span>
+            </button>
+            <button type="button" data-cat="의류/잡화" onclick="selectCategory('의류/잡화', this)"
+              class="cat-chip py-3 px-3 rounded-2xl border-2 border-slate-200 bg-slate-50 hover:bg-indigo-50 text-slate-700 font-bold text-sm flex items-center justify-center gap-2 transition">
+              <span>👕</span><span>의류/잡화</span>
+            </button>
+            <button type="button" data-cat="전자/가전" onclick="selectCategory('전자/가전', this)"
+              class="cat-chip py-3 px-3 rounded-2xl border-2 border-slate-200 bg-slate-50 hover:bg-indigo-50 text-slate-700 font-bold text-sm flex items-center justify-center gap-2 transition">
+              <span>🎧</span><span>전자/가전</span>
+            </button>
+            <button type="button" data-cat="문구/완구" onclick="selectCategory('문구/완구', this)"
+              class="cat-chip py-3 px-3 rounded-2xl border-2 border-slate-200 bg-slate-50 hover:bg-indigo-50 text-slate-700 font-bold text-sm flex items-center justify-center gap-2 transition">
+              <span>🧸</span><span>문구/완구</span>
+            </button>
+            <button type="button" data-cat="기타" onclick="selectCategory('기타', this)"
+              class="cat-chip py-3 px-3 rounded-2xl border-2 border-slate-200 bg-slate-50 hover:bg-indigo-50 text-slate-700 font-bold text-sm flex items-center justify-center gap-2 transition col-span-2 sm:col-span-1">
+              <span>📦</span><span>기타</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 4. 원산지 (국가명 검색형 드롭다운) -->
+        <div class="relative">
+          <label for="input-country-search" class="block text-sm font-bold text-slate-700 mb-2">
+            <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-black mr-1.5">4</span>
+            원산지 (만든 나라) 검색 및 선택
+          </label>
+          
+          <div class="relative">
+            <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+              <i class="fa-solid fa-magnifying-glass"></i>
+            </span>
+            <input type="text" id="input-country-search" autocomplete="off"
+              placeholder="나라 이름을 입력 후 목록에서 클릭하세요 (예: 미국, 베트남)"
+              oninput="filterCountries(this.value)"
+              onfocus="filterCountries(this.value)"
+              class="w-full pl-11 pr-10 py-3.5 rounded-2xl border-2 border-slate-200 focus:border-indigo-500 focus:outline-none text-base font-medium text-slate-800">
+            <button type="button" id="clear-country-btn" onclick="clearSelectedCountry()" class="hidden absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 flex items-center justify-center text-xs">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+
+          <!-- 선택 완료 배지 -->
+          <div id="selected-country-badge" class="hidden mt-2.5 px-3.5 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-800 text-sm font-bold flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-circle-check text-indigo-600"></i>
+              <span id="selected-country-label">선택된 국가: 미국 (USA)</span>
+            </div>
+            <span class="text-xs text-indigo-500">선택 완료</span>
+          </div>
+
+          <!-- 자동완성 드롭다운 목록 -->
+          <ul id="country-dropdown" class="hidden absolute left-0 right-0 mt-1.5 max-h-60 overflow-y-auto bg-white rounded-2xl shadow-xl border border-slate-200 z-40 divide-y divide-slate-100">
+            <!-- JS로 동적 생성 -->
+          </ul>
+        </div>
+
+        <!-- 제출 버튼 -->
+        <button type="submit" id="student-submit-btn"
+          class="w-full py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-jua text-xl tracking-wide shadow-lg shadow-indigo-200 transition flex items-center justify-center gap-2">
+          <i class="fa-solid fa-suitcase"></i>
+          <span>비밀 가방에 담기!</span>
+        </button>
+      </form>
+
+      <!-- 내가 방금 담은 물건 목록 (학생 확인용) -->
+      <div id="my-recent-box" class="hidden mt-6 bg-white rounded-3xl p-5 shadow-sm border border-slate-200/80">
+        <h3 class="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+          <i class="fa-solid fa-clock-rotate-left text-indigo-500"></i>
+          <span>방금 내가 가방에 담은 물건</span>
+        </h3>
+        <ul id="my-recent-list" class="space-y-2 text-sm"></ul>
+      </div>
+    </main>
+  </section>
+
+  <!-- =====================================================================
+       3. 교사용 대시보드 화면 (전자칠판/프로젝터 투사용)
+  ====================================================================== -->
+  <section id="view-teacher" class="hidden flex-1 flex flex-col h-screen overflow-hidden bg-slate-100">
+    <!-- 상단 헤더 & 요약 카드 바 -->
+    <header class="bg-white border-b border-slate-200 px-4 py-3 shrink-0 z-20 shadow-sm">
+      <div class="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-3">
+        
+        <!-- 좌측 타이틀 -->
+        <div class="flex items-center gap-3">
+          <button onclick="switchMode('landing')" title="첫 화면으로" class="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition">
+            <i class="fa-solid fa-house"></i>
+          </button>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">🧳</span>
+              <h1 class="font-jua text-2xl text-slate-800">창업주의 비밀 가방 <span class="text-indigo-600 text-lg">세계 무역 지도</span></h1>
+            </div>
+            <p class="text-xs text-slate-500 hidden sm:block">학생들이 조사한 수입 물품의 원산지가 실시간 원형 마커로 표시됩니다.</p>
+          </div>
+        </div>
+
+        <!-- 중앙 요약 카드 3개 -->
+        <div class="flex items-center gap-2 sm:gap-4">
+          <div class="bg-indigo-50 border border-indigo-100 px-3.5 py-2 rounded-2xl flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-sm">
+              <i class="fa-solid fa-cubes"></i>
+            </div>
+            <div>
+              <div class="text-[11px] font-bold text-indigo-600">총 등록 물건</div>
+              <div class="text-lg font-black text-slate-800 leading-tight"><span id="stat-total-items">0</span><span class="text-xs font-bold text-slate-500 ml-0.5">개</span></div>
+            </div>
+          </div>
+
+          <div class="bg-emerald-50 border border-emerald-100 px-3.5 py-2 rounded-2xl flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-sm">
+              <i class="fa-solid fa-globe"></i>
+            </div>
+            <div>
+              <div class="text-[11px] font-bold text-emerald-600">원산지 국가 수</div>
+              <div class="text-lg font-black text-slate-800 leading-tight"><span id="stat-total-countries">0</span><span class="text-xs font-bold text-slate-500 ml-0.5">개국</span></div>
+            </div>
+          </div>
+
+          <div class="bg-amber-50 border border-amber-100 px-3.5 py-2 rounded-2xl flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center text-sm">
+              <i class="fa-solid fa-crown"></i>
+            </div>
+            <div>
+              <div class="text-[11px] font-bold text-amber-600">최다 원산지 국가</div>
+              <div id="stat-top-country" class="text-base sm:text-lg font-black text-slate-800 leading-tight truncate max-w-[120px]">-</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 우측 관리자 컨트롤 -->
+        <div class="flex items-center gap-2">
+          <div class="hidden xl:flex items-center gap-1.5 text-xs text-slate-500 bg-slate-100 px-3 py-2 rounded-xl">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+            <span>10초 자동 갱신</span>
+          </div>
+          <button onclick="fetchDashboardData(true)" id="btn-refresh" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-bold flex items-center gap-1.5 shadow-sm transition">
+            <i class="fa-solid fa-rotate-right" id="refresh-icon"></i>
+            <span>새로고침</span>
+          </button>
+          <button onclick="confirmClearAllData()" class="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs sm:text-sm font-bold flex items-center gap-1.5 transition">
+            <i class="fa-solid fa-trash-can"></i>
+            <span class="hidden sm:inline">전체 초기화</span>
+          </button>
+        </div>
+
+      </div>
+    </header>
+
+    <!-- 메인 콘텐츠: 좌측 70% 세계지도 + 우측 30% 실시간 피드 -->
+    <main class="flex-1 flex flex-col lg:flex-row overflow-hidden">
+      
+      <!-- 좌측 70%: 인터랙티브 세계지도 -->
+      <div class="w-full lg:w-[70%] h-[52vh] lg:h-full relative bg-sky-100">
+        <div id="world-map" class="w-full h-full z-10"></div>
+        
+        <!-- 지도 하단 범례 안내 -->
+        <div class="absolute bottom-4 left-4 z-20 bg-white/95 backdrop-blur-sm px-4 py-2.5 rounded-2xl shadow-md border border-slate-200 text-xs text-slate-600 flex items-center gap-3">
+          <div class="flex items-center gap-1.5">
+            <span class="w-5 h-5 rounded-full bg-gradient-to-br from-amber-400 to-orange-600 text-white font-bold text-[10px] flex items-center justify-center border border-white shadow">3</span>
+            <span>물건이 많을수록 원이 커져요!</span>
+          </div>
+          <span class="text-slate-300">|</span>
+          <span>원을 클릭하면 상세 물건 목록이 열립니다.</span>
+        </div>
+      </div>
+
+      <!-- 우측 30%: 실시간 입력 피드 & 카테고리 필터 -->
+      <aside class="w-full lg:w-[30%] flex-1 lg:h-full bg-white border-t lg:border-t-0 lg:border-l border-slate-200 flex flex-col overflow-hidden">
+        <!-- 피드 헤더 & 필터 -->
+        <div class="p-4 border-b border-slate-100 shrink-0">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="font-bold text-slate-800 flex items-center gap-2">
+              <i class="fa-solid fa-bolt text-amber-500"></i>
+              <span>실시간 가방 속 물건 피드</span>
+            </h2>
+            <span id="feed-count-badge" class="text-xs font-bold bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full">0건</span>
+          </div>
+
+          <!-- 카테고리 필터 버튼 -->
+          <div id="dashboard-filters" class="flex gap-1.5 overflow-x-auto pb-1">
+            <button onclick="setDashboardFilter('전체')" data-filter="전체" class="filter-btn active px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 text-white shrink-0 transition">전체</button>
+            <button onclick="setDashboardFilter('식품')" data-filter="식품" class="filter-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 shrink-0 transition">🍎 식품</button>
+            <button onclick="setDashboardFilter('의류/잡화')" data-filter="의류/잡화" class="filter-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 shrink-0 transition">👕 의류/잡화</button>
+            <button onclick="setDashboardFilter('전자/가전')" data-filter="전자/가전" class="filter-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 shrink-0 transition">🎧 전자/가전</button>
+            <button onclick="setDashboardFilter('문구/완구')" data-filter="문구/완구" class="filter-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 shrink-0 transition">🧸 문구/완구</button>
+            <button onclick="setDashboardFilter('기타')" data-filter="기타" class="filter-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 shrink-0 transition">📦 기타</button>
+          </div>
+        </div>
+
+        <!-- 피드 리스트 영역 -->
+        <div id="dashboard-feed-list" class="flex-1 overflow-y-auto p-3 space-y-2.5 bg-slate-50/60">
+          <!-- JS로 렌더링 -->
+        </div>
+      </aside>
+
+    </main>
+  </section>
+
+  <!-- =====================================================================
+       JavaScript 로직
+  ====================================================================== -->
+  <script>
+    /**
+     * 1. 주요 국가 표준 데이터베이스 (한글명, 영문/별칭 키워드, 대표 위도·경도, 국기 이모지)
+     * 초등학생들이 인터넷 마트 원산지 표기에서 자주 접하는 국가들을 폭넓게 수록했습니다.
+     */
+    const COUNTRIES_DB = [
+      { name: "대한민국", keywords: "한국 국산 국내산 south korea republic of korea kr", lat: 36.5, lng: 127.8, flag: "🇰🇷" },
+      { name: "미국", keywords: "usa united states america 아메리카 us", lat: 39.8, lng: -98.5, flag: "🇺🇸" },
+      { name: "중국", keywords: "china prc 중화인민공화국 cn", lat: 35.8, lng: 104.1, flag: "🇨🇳" },
+      { name: "일본", keywords: "japan nippon jp", lat: 36.2, lng: 138.2, flag: "🇯🇵" },
+      { name: "베트남", keywords: "vietnam viet nam vn", lat: 14.0, lng: 108.2, flag: "🇻🇳" },
+      { name: "태국", keywords: "thailand 타이 th", lat: 15.8, lng: 100.9, flag: "🇹🇭" },
+      { name: "인도네시아", keywords: "indonesia id", lat: -0.7, lng: 113.9, flag: "🇮🇩" },
+      { name: "필리핀", keywords: "philippines ph", lat: 12.8, lng: 121.7, flag: "🇵🇭" },
+      { name: "말레이시아", keywords: "malaysia my", lat: 4.2, lng: 101.9, flag: "🇲🇾" },
+      { name: "인도", keywords: "india in", lat: 20.5, lng: 78.9, flag: "🇮🇳" },
+      { name: "대만", keywords: "taiwan 타이완 tw", lat: 23.6, lng: 120.9, flag: "🇹🇼" },
+      { name: "싱가포르", keywords: "singapore sg", lat: 1.35, lng: 103.8, flag: "🇸🇬" },
+      { name: "캄보디아", keywords: "cambodia kh", lat: 12.5, lng: 104.9, flag: "🇰🇭" },
+      { name: "미얀마", keywords: "myanmar burma mm", lat: 21.9, lng: 95.9, flag: "🇲🇲" },
+      { name: "방글라데시", keywords: "bangladesh bd", lat: 23.6, lng: 90.3, flag: "🇧🇩" },
+      { name: "우즈베키스탄", keywords: "uzbekistan uz", lat: 41.3, lng: 64.5, flag: "🇺🇿" },
+      { name: "튀르키예", keywords: "터키 turkey turkiye tr", lat: 38.9, lng: 35.2, flag: "🇹🇷" },
+      { name: "사우디아라비아", keywords: "saudi arabia sa", lat: 23.8, lng: 45.0, flag: "🇸🇦" },
+      { name: "아랍에미리트", keywords: "uae 두바이 dubai ae", lat: 23.4, lng: 53.8, flag: "🇦🇪" },
+      { name: "이스라엘", keywords: "israel il", lat: 31.0, lng: 34.8, flag: "🇮🇱" },
+      { name: "호주", keywords: "오스트레일리아 australia au", lat: -25.2, lng: 133.7, flag: "🇦🇺" },
+      { name: "뉴질랜드", keywords: "new zealand nz", lat: -40.9, lng: 174.8, flag: "🇳🇿" },
+      { name: "캐나다", keywords: "canada ca", lat: 56.1, lng: -106.3, flag: "🇨🇦" },
+      { name: "멕시코", keywords: "mexico mx", lat: 23.6, lng: -102.5, flag: "🇲🇽" },
+      { name: "브라질", keywords: "brazil br", lat: -14.2, lng: -51.9, flag: "🇧🇷" },
+      { name: "칠레", keywords: "chile cl", lat: -35.6, lng: -71.5, flag: "🇨🇱" },
+      { name: "페루", keywords: "peru pe", lat: -9.1, lng: -75.0, flag: "🇵🇪" },
+      { name: "아르헨티나", keywords: "argentina ar", lat: -38.4, lng: -63.6, flag: "🇦🇷" },
+      { name: "콜롬비아", keywords: "colombia co", lat: 4.5, lng: -74.2, flag: "🇨🇴" },
+      { name: "에콰도르", keywords: "ecuador ec", lat: -1.8, lng: -78.1, flag: "🇪🇨" },
+      { name: "영국", keywords: "uk united kingdom britain england gb", lat: 55.3, lng: -3.4, flag: "🇬🇧" },
+      { name: "프랑스", keywords: "france fr", lat: 46.2, lng: 2.2, flag: "🇫🇷" },
+      { name: "독일", keywords: "germany deutschland de", lat: 51.1, lng: 10.4, flag: "🇩🇪" },
+      { name: "이탈리아", keywords: "이태리 italy it", lat: 41.8, lng: 12.5, flag: "🇮🇹" },
+      { name: "스페인", keywords: "에스파냐 spain es", lat: 40.4, lng: -3.7, flag: "🇪🇸" },
+      { name: "네덜란드", keywords: "홀란드 netherlands holland nl", lat: 52.1, lng: 5.2, flag: "🇳🇱" },
+      { name: "벨기에", keywords: "belgium be", lat: 50.5, lng: 4.4, flag: "🇧🇪" },
+      { name: "스위스", keywords: "switzerland ch", lat: 46.8, lng: 8.2, flag: "🇨🇭" },
+      { name: "오스트리아", keywords: "austria at", lat: 47.5, lng: 14.5, flag: "🇦🇹" },
+      { name: "폴란드", keywords: "poland pl", lat: 51.9, lng: 19.1, flag: "🇵🇱" },
+      { name: "체코", keywords: "czechia czech republic cz", lat: 49.8, lng: 15.4, flag: "🇨🇿" },
+      { name: "헝가리", keywords: "hungary hu", lat: 47.1, lng: 19.5, flag: "🇭🇺" },
+      { name: "덴마크", keywords: "denmark dk", lat: 56.2, lng: 9.5, flag: "🇩🇰" },
+      { name: "스웨덴", keywords: "sweden se", lat: 60.1, lng: 18.6, flag: "🇸🇪" },
+      { name: "노르웨이", keywords: "norway no", lat: 60.4, lng: 8.4, flag: "🇳🇴" },
+      { name: "핀란드", keywords: "finland fi", lat: 61.9, lng: 25.7, flag: "🇫🇮" },
+      { name: "아일랜드", keywords: "ireland ie", lat: 53.4, lng: -8.2, flag: "🇮🇪" },
+      { name: "포르투갈", keywords: "portugal pt", lat: 39.3, lng: -8.2, flag: "🇵🇹" },
+      { name: "그리스", keywords: "greece gr", lat: 39.0, lng: 21.8, flag: "🇬🇷" },
+      { name: "러시아", keywords: "russia ru", lat: 61.5, lng: 105.3, flag: "🇷🇺" },
+      { name: "이집트", keywords: "egypt eg", lat: 26.8, lng: 30.8, flag: "🇪🇬" },
+      { name: "남아프리카공화국", keywords: "남아공 south africa za", lat: -30.5, lng: 22.9, flag: "🇿🇦" },
+      { name: "에티오피아", keywords: "ethiopia et", lat: 9.1, lng: 40.4, flag: "🇪🇹" },
+      { name: "케냐", keywords: "kenya ke", lat: -0.02, lng: 37.9, flag: "🇰🇪" },
+      { name: "모로코", keywords: "morocco ma", lat: 31.7, lng: -7.0, flag: "🇲🇦" },
+      { name: "가나", keywords: "ghana gh", lat: 7.9, lng: -1.0, flag: "🇬🇭" }
+    ];
+
+    // 전역 상태 변수
+    let selectedCountryObj = null;
+    let myAddedItems = [];
+    let allItems = [];
+    let currentDashboardFilter = '전체';
+    let leafletMap = null;
+    let markersLayer = null;
+    let pollingInterval = null;
+    const isDemoMode = !GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.trim() === "";
+
+    // 카테고리별 배지 색상 및 아이콘 매핑
+    const CATEGORY_META = {
+      '식품': { icon: '🍎', badgeClass: 'bg-rose-100 text-rose-700 border-rose-200' },
+      '의류/잡화': { icon: '👕', badgeClass: 'bg-sky-100 text-sky-700 border-sky-200' },
+      '전자/가전': { icon: '🎧', badgeClass: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
+      '문구/완구': { icon: '🧸', badgeClass: 'bg-amber-100 text-amber-700 border-amber-200' },
+      '기타': { icon: '📦', badgeClass: 'bg-slate-100 text-slate-700 border-slate-200' }
+    };
+
+    /**
+     * 초기 로드 시 URL 파라미터 확인 및 데모 배지 표시
+     */
+    window.addEventListener('DOMContentLoaded', () => {
+      if (isDemoMode) {
+        document.getElementById('demo-badge-landing').classList.remove('hidden');
+        initDemoDataIfEmpty();
+      }
+
+      // 드롭다운 외부 클릭 시 닫기
+      document.addEventListener('click', (e) => {
+        const dropdown = document.getElementById('country-dropdown');
+        const searchInput = document.getElementById('input-country-search');
+        if (dropdown && !dropdown.contains(e.target) && e.target !== searchInput) {
+          dropdown.classList.add('hidden');
+        }
+      });
+
+      // URL 파라미터(?mode=teacher 또는 ?mode=student) 처리
+      const params = new URLSearchParams(window.location.search);
+      const mode = params.get('mode');
+      if (mode === 'student') {
+        switchMode('student');
+      } else if (mode === 'teacher') {
+        openTeacherAuth();
+      }
+    });
+
+    /**
+     * 화면 전환 함수
+     */
+    function switchMode(mode) {
+      document.getElementById('view-landing').classList.add('hidden');
+      document.getElementById('view-student').classList.add('hidden');
+      document.getElementById('view-teacher').classList.add('hidden');
+
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+      }
+
+      if (mode === 'landing') {
+        document.getElementById('view-landing').classList.remove('hidden');
+      } else if (mode === 'student') {
+        document.getElementById('view-student').classList.remove('hidden');
+      } else if (mode === 'teacher') {
+        document.getElementById('view-teacher').classList.remove('hidden');
+        initWorldMap();
+        fetchDashboardData(false);
+        // 10초 간격 자동 폴링 시작
+        pollingInterval = setInterval(() => fetchDashboardData(false), 10000);
+      }
+    }
+
+    /**
+     * 토스트 메시지 표시 (alert 대체)
+     */
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      
+      const colors = {
+        info: 'bg-slate-800 text-white',
+        success: 'bg-emerald-600 text-white',
+        warning: 'bg-amber-500 text-white',
+        error: 'bg-rose-600 text-white'
+      };
+      const icons = {
+        info: 'fa-circle-info',
+        success: 'fa-circle-check',
+        warning: 'fa-triangle-exclamation',
+        error: 'fa-circle-xmark'
+      };
+
+      toast.className = `${colors[type]} px-4 py-3 rounded-2xl shadow-xl text-sm font-bold flex items-center gap-2.5 animate-pop pointer-events-auto`;
+      toast.innerHTML = `<i class="fa-solid ${icons[type]}"></i><span>${message}</span>`;
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s';
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
+    /**
+     * 커스텀 확인 모달 (confirm 대체)
+     */
+    function showConfirmModal(title, message, onConfirm) {
+      const modal = document.getElementById('confirm-modal');
+      document.getElementById('confirm-title').textContent = title;
+      document.getElementById('confirm-message').textContent = message;
+      
+      const okBtn = document.getElementById('confirm-ok-btn');
+      const cancelBtn = document.getElementById('confirm-cancel-btn');
+
+      const close = () => {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      };
+
+      cancelBtn.onclick = close;
+      okBtn.onclick = () => {
+        close();
+        onConfirm();
+      };
+
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    // =========================================================================
+    // 교사 인증 로직
+    // =========================================================================
+    function openTeacherAuth() {
+      const modal = document.getElementById('teacher-auth-modal');
+      const input = document.getElementById('teacher-pw-input');
+      input.value = '';
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      setTimeout(() => input.focus(), 100);
+    }
+
+    function closeTeacherAuth() {
+      const modal = document.getElementById('teacher-auth-modal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function verifyTeacherPassword(e) {
+      e.preventDefault();
+      const pw = document.getElementById('teacher-pw-input').value.trim();
+      if (pw === TEACHER_PASSWORD) {
+        closeTeacherAuth();
+        switchMode('teacher');
+      } else {
+        showToast('비밀번호가 일치하지 않습니다.', 'error');
+        document.getElementById('teacher-pw-input').value = '';
+        document.getElementById('teacher-pw-input').focus();
+      }
+    }
+
+    // =========================================================================
+    // 학생용 화면 로직
+    // =========================================================================
+    function selectCategory(category, btnElement) {
+      document.getElementById('input-category').value = category;
+      document.querySelectorAll('.cat-chip').forEach(chip => {
+        chip.classList.remove('border-indigo-600', 'bg-indigo-600', 'text-white', 'shadow-md');
+        chip.classList.add('border-slate-200', 'bg-slate-50', 'text-slate-700');
+      });
+      btnElement.classList.remove('border-slate-200', 'bg-slate-50', 'text-slate-700');
+      btnElement.classList.add('border-indigo-600', 'bg-indigo-600', 'text-white', 'shadow-md');
+    }
+
+    function filterCountries(query) {
+      const dropdown = document.getElementById('country-dropdown');
+      const q = query.trim().toLowerCase();
+
+      // 사용자가 텍스트를 수정하면 기존 선택 해제
+      if (selectedCountryObj && selectedCountryObj.name !== query.trim()) {
+        selectedCountryObj = null;
+        document.getElementById('selected-country-badge').classList.add('hidden');
+      }
+
+      document.getElementById('clear-country-btn').classList.toggle('hidden', q.length === 0);
+
+      const matches = q === ''
+        ? COUNTRIES_DB.slice(0, 15) // 빈 입력 시 주요 국가 상위 15개 표시
+        : COUNTRIES_DB.filter(c =>
+            c.name.toLowerCase().includes(q) ||
+            c.keywords.toLowerCase().includes(q)
+          );
+
+      if (matches.length === 0) {
+        dropdown.innerHTML = `
+          <li class="px-4 py-3.5 text-sm text-slate-500 text-center">
+            일치하는 국가가 없습니다. 철자를 확인해 주세요!
+          </li>`;
+      } else {
+        dropdown.innerHTML = matches.map(c => {
+          const engMatch = c.keywords.split(' ')[0].toUpperCase();
+          return `
+            <li onclick="selectCountry('${c.name}')"
+              class="px-4 py-3 hover:bg-indigo-50 cursor-pointer flex items-center justify-between transition">
+              <div class="flex items-center gap-2.5">
+                <span class="text-xl">${c.flag}</span>
+                <span class="font-bold text-slate-800">${c.name}</span>
+                <span class="text-xs text-slate-400">(${engMatch})</span>
+              </div>
+              <span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg">선택</span>
+            </li>
+          `;
+        }).join('');
+      }
+      dropdown.classList.remove('hidden');
+    }
+
+    function selectCountry(countryName) {
+      const found = COUNTRIES_DB.find(c => c.name === countryName);
+      if (!found) return;
+
+      selectedCountryObj = found;
+      const input = document.getElementById('input-country-search');
+      input.value = found.name;
+
+      document.getElementById('country-dropdown').classList.add('hidden');
+      document.getElementById('clear-country-btn').classList.remove('hidden');
+
+      const badge = document.getElementById('selected-country-badge');
+      const label = document.getElementById('selected-country-label');
+      const engHint = found.keywords.split(' ')[0].toUpperCase();
+      label.textContent = `선택된 국가: ${found.flag} ${found.name} (${engHint})`;
+      badge.classList.remove('hidden');
+    }
+
+    function clearSelectedCountry() {
+      selectedCountryObj = null;
+      const input = document.getElementById('input-country-search');
+      input.value = '';
+      document.getElementById('selected-country-badge').classList.add('hidden');
+      document.getElementById('clear-country-btn').classList.add('hidden');
+      input.focus();
+      filterCountries('');
+    }
+
+    async function handleStudentSubmit(e) {
+      e.preventDefault();
+
+      const studentNum = document.getElementById('input-student-num').value.trim();
+      const itemName = document.getElementById('input-item-name').value.trim();
+      const category = document.getElementById('input-category').value;
+
+      if (!studentNum) {
+        showToast('나의 학급 번호를 입력해 주세요!', 'warning');
+        return;
+      }
+      if (!itemName) {
+        showToast('물건 이름을 입력해 주세요!', 'warning');
+        return;
+      }
+      if (!category) {
+        showToast('물건 종류(카테고리)를 선택해 주세요!', 'warning');
+        return;
+      }
+      if (!selectedCountryObj) {
+        showToast('원산지 목록에서 나라를 클릭해 선택해 주세요!', 'warning');
+        document.getElementById('input-country-search').focus();
+        filterCountries(document.getElementById('input-country-search').value);
+        return;
+      }
+
+      const submitBtn = document.getElementById('student-submit-btn');
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i><span>가방에 담는 중...</span>`;
+
+      const newItem = {
+        id: 'item_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+        timestamp: new Date().toISOString(),
+        studentNum: Number(studentNum),
+        itemName: itemName,
+        category: category,
+        countryName: selectedCountryObj.name,
+        lat: selectedCountryObj.lat,
+        lng: selectedCountryObj.lng
+      };
+
+      try {
+        await saveItemToBackend(newItem);
+
+        // 학생 내 가방 기록 업데이트
+        myAddedItems.unshift(newItem);
+        updateMyBagUI(newItem);
+
+        // 연속 입력을 위한 폼 초기화 (학급 번호는 유지하여 편의성 제공)
+        document.getElementById('input-item-name').value = '';
+        document.getElementById('input-category').value = '';
+        document.querySelectorAll('.cat-chip').forEach(chip => {
+          chip.classList.remove('border-indigo-600', 'bg-indigo-600', 'text-white', 'shadow-md');
+          chip.classList.add('border-slate-200', 'bg-slate-50', 'text-slate-700');
+        });
+        clearSelectedCountry();
+        document.getElementById('country-dropdown').classList.add('hidden');
+
+      } catch (err) {
+        showToast('저장 중 오류가 발생했습니다. 다시 시도해 주세요.', 'error');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = `<i class="fa-solid fa-suitcase"></i><span>비밀 가방에 담기!</span>`;
+      }
+    }
+
+    function updateMyBagUI(latestItem) {
+      document.getElementById('my-bag-count').textContent = myAddedItems.length;
+
+      // 상단 완료 배너 표시
+      const banner = document.getElementById('student-success-banner');
+      const detail = document.getElementById('student-success-detail');
+      const countryInfo = COUNTRIES_DB.find(c => c.name === latestItem.countryName);
+      const flag = countryInfo ? countryInfo.flag : '🌍';
+      detail.textContent = `[${latestItem.category}] ${latestItem.itemName} (${flag} ${latestItem.countryName}) 등록 완료!`;
+      
+      banner.classList.remove('hidden');
+      banner.classList.remove('animate-pop');
+      void banner.offsetWidth; // 리플로우 트리거
+      banner.classList.add('animate-pop');
+
+      // 내가 담은 물건 목록 렌더링
+      const recentBox = document.getElementById('my-recent-box');
+      const recentList = document.getElementById('my-recent-list');
+      recentBox.classList.remove('hidden');
+
+      recentList.innerHTML = myAddedItems.map(item => {
+        const cObj = COUNTRIES_DB.find(c => c.name === item.countryName);
+        const f = cObj ? cObj.flag : '🌍';
+        return `
+          <li class="flex items-center justify-between bg-slate-50 px-3.5 py-2.5 rounded-xl border border-slate-100">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-bold px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-700">${item.category}</span>
+              <span class="font-bold text-slate-800">${escapeHtml(item.itemName)}</span>
+            </div>
+            <span class="text-xs font-bold text-slate-600">${f} ${item.countryName}</span>
+          </li>
+        `;
+      }).join('');
+    }
+
+    // =========================================================================
+    // 백엔드 통신 (Google Apps Script 연동 및 로컬 데모 모드)
+    // =========================================================================
+    function initDemoDataIfEmpty() {
+      const existing = localStorage.getItem('secret_bag_demo_data');
+      if (!existing) {
+        const sampleData = [
+          { id: 'demo_1', timestamp: new Date().toISOString(), studentNum: 3, itemName: '냉동 블루베리', category: '식품', countryName: '칠레', lat: -35.6, lng: -71.5 },
+          { id: 'demo_2', timestamp: new Date().toISOString(), studentNum: 12, itemName: '무선 마우스', category: '전자/가전', countryName: '중국', lat: 35.8, lng: 104.1 },
+          { id: 'demo_3', timestamp: new Date().toISOString(), studentNum: 7, itemName: '운동화', category: '의류/잡화', countryName: '베트남', lat: 14.0, lng: 108.2 },
+          { id: 'demo_4', timestamp: new Date().toISOString(), studentNum: 19, itemName: '오렌지 주스', category: '식품', countryName: '미국', lat: 39.8, lng: -98.5 },
+          { id: 'demo_5', timestamp: new Date().toISOString(), studentNum: 5, itemName: '블록 장난감', category: '문구/완구', countryName: '덴마크', lat: 56.2, lng: 9.5 },
+          { id: 'demo_6', timestamp: new Date().toISOString(), studentNum: 21, itemName: '바나나', category: '식품', countryName: '필리핀', lat: 12.8, lng: 121.7 },
+          { id: 'demo_7', timestamp: new Date().toISOString(), studentNum: 14, itemName: '스마트폰 충전기', category: '전자/가전', countryName: '중국', lat: 35.8, lng: 104.1 }
+        ];
+        localStorage.setItem('secret_bag_demo_data', JSON.stringify(sampleData));
+      }
+    }
+
+    async function saveItemToBackend(item) {
+      if (isDemoMode) {
+        const list = JSON.parse(localStorage.getItem('secret_bag_demo_data') || '[]');
+        list.push(item);
+        localStorage.setItem('secret_bag_demo_data', JSON.stringify(list));
+        return;
+      }
+
+      const response = await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'add', data: item })
+      });
+      const result = await response.json();
+      if (result.status !== 'success') throw new Error(result.message);
+    }
+
+    async function fetchDashboardData(isManual = false) {
+      const refreshIcon = document.getElementById('refresh-icon');
+      if (refreshIcon) refreshIcon.classList.add('fa-spin');
+
+      try {
+        if (isDemoMode) {
+          allItems = JSON.parse(localStorage.getItem('secret_bag_demo_data') || '[]');
+        } else {
+          const response = await fetch(GOOGLE_SCRIPT_URL);
+          const result = await response.json();
+          if (result.status === 'success') {
+            allItems = result.data || [];
+          }
+        }
+        renderDashboard();
+        if (isManual) showToast('최신 데이터를 불러왔습니다.', 'success');
+      } catch (err) {
+        if (isManual) showToast('데이터를 불러오는데 실패했습니다.', 'error');
+      } finally {
+        if (refreshIcon) {
+          setTimeout(() => refreshIcon.classList.remove('fa-spin'), 400);
+        }
+      }
+    }
+
+    async function deleteSingleItem(id, itemName) {
+      showConfirmModal(
+        '항목 삭제',
+        `'${itemName}' 항목을 목록에서 삭제할까요?`,
+        async () => {
+          try {
+            if (isDemoMode) {
+              allItems = allItems.filter(item => item.id !== id);
+              localStorage.setItem('secret_bag_demo_data', JSON.stringify(allItems));
+            } else {
+              await fetch(GOOGLE_SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'delete', id: id })
+              });
+              allItems = allItems.filter(item => item.id !== id);
+            }
+            renderDashboard();
+            showToast('항목이 삭제되었습니다.', 'info');
+          } catch (e) {
+            showToast('삭제 중 오류가 발생했습니다.', 'error');
+          }
+        }
+      );
+    }
+
+    function confirmClearAllData() {
+      showConfirmModal(
+        '전체 데이터 초기화',
+        '모든 학생이 등록한 물건 기록을 지우고 처음부터 다시 시작할까요? 이 작업은 되돌릴 수 없습니다.',
+        async () => {
+          try {
+            if (isDemoMode) {
+              allItems = [];
+              localStorage.setItem('secret_bag_demo_data', JSON.stringify([]));
+            } else {
+              await fetch(GOOGLE_SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'clear' })
+              });
+              allItems = [];
+            }
+            renderDashboard();
+            showToast('모든 데이터가 초기화되었습니다.', 'info');
+          } catch (e) {
+            showToast('초기화 중 오류가 발생했습니다.', 'error');
+          }
+        }
+      );
+    }
+
+    // =========================================================================
+    // 교사용 대시보드 지도 & 피드 렌더링
+    // =========================================================================
+    function initWorldMap() {
+      if (leafletMap) {
+        setTimeout(() => leafletMap.invalidateSize(), 200);
+        return;
+      }
+
+      leafletMap = L.map('world-map', {
+        center: [22, 15],
+        zoom: 2,
+        minZoom: 2,
+        maxZoom: 7,
+        worldCopyJump: true
+      });
+
+      // 깔끔한 파스텔 톤 지도 타일 (CartoDB Voyager)
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap &copy; CARTO',
+        subdomains: 'abcd',
+        maxZoom: 18
+      }).addTo(leafletMap);
+
+      markersLayer = L.layerGroup().addTo(leafletMap);
+    }
+
+    function setDashboardFilter(filterName) {
+      currentDashboardFilter = filterName;
+      document.querySelectorAll('.filter-btn').forEach(btn => {
+        if (btn.dataset.filter === filterName) {
+          btn.classList.remove('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
+          btn.classList.add('bg-indigo-600', 'text-white');
+        } else {
+          btn.classList.remove('bg-indigo-600', 'text-white');
+          btn.classList.add('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
+        }
+      });
+      renderDashboard();
+    }
+
+    function renderDashboard() {
+      // 1. 상단 요약 카드 통계 계산 (전체 데이터 기준)
+      document.getElementById('stat-total-items').textContent = allItems.length;
+
+      const countryCounts = {};
+      allItems.forEach(item => {
+        countryCounts[item.countryName] = (countryCounts[item.countryName] || 0) + 1;
+      });
+
+      const uniqueCountries = Object.keys(countryCounts);
+      document.getElementById('stat-total-countries').textContent = uniqueCountries.length;
+
+      if (uniqueCountries.length === 0) {
+        document.getElementById('stat-top-country').textContent = '-';
+      } else {
+        let topCountry = uniqueCountries[0];
+        uniqueCountries.forEach(c => {
+          if (countryCounts[c] > countryCounts[topCountry]) topCountry = c;
+        });
+        const cObj = COUNTRIES_DB.find(c => c.name === topCountry);
+        const flag = cObj ? cObj.flag : '';
+        document.getElementById('stat-top-country').textContent = `${flag} ${topCountry} (${countryCounts[topCountry]})`;
+      }
+
+      // 2. 카테고리 필터 적용
+      const filteredItems = currentDashboardFilter === '전체'
+        ? allItems
+        : allItems.filter(item => item.category === currentDashboardFilter);
+
+      // 3. 지도 마커 렌더링 (연결선 없이 국가별 원형 버블 마커만 표시)
+      renderMapMarkers(filteredItems);
+
+      // 4. 우측 실시간 피드 렌더링 (최신순 정렬)
+      renderFeedList(filteredItems);
+    }
+
+    function renderMapMarkers(items) {
+      if (!markersLayer) return;
+      markersLayer.clearLayers();
+
+      // 국가별로 그룹화
+      const groupedByCountry = {};
+      items.forEach(item => {
+        if (!groupedByCountry[item.countryName]) {
+          groupedByCountry[item.countryName] = {
+            countryName: item.countryName,
+            lat: item.lat,
+            lng: item.lng,
+            items: []
+          };
+        }
+        groupedByCountry[item.countryName].items.push(item);
+      });
+
+      Object.values(groupedByCountry).forEach(group => {
+        const count = group.items.length;
+        // 개수에 비례한 원 크기 계산 (최소 32px ~ 최대 68px)
+        const size = Math.min(68, Math.max(32, 28 + count * 4.5));
+        const fontSize = count >= 100 ? '13px' : count >= 10 ? '15px' : '16px';
+
+        const icon = L.divIcon({
+          className: '', // 기본 스타일 제거
+          html: `<div class="country-bubble-marker" style="width:${size}px; height:${size}px; font-size:${fontSize};">${count}</div>`,
+          iconSize: [size, size],
+          iconAnchor: [size / 2, size / 2]
+        });
+
+        const cObj = COUNTRIES_DB.find(c => c.name === group.countryName);
+        const flag = cObj ? cObj.flag : '🌍';
+
+        // 팝업 내용 구성 (해당 국가에서 조사된 물건 목록)
+        const listHtml = group.items.slice().reverse().map(it => {
+          const meta = CATEGORY_META[it.category] || CATEGORY_META['기타'];
+          return `
+            <li class="py-1.5 border-b border-slate-100 last:border-0 flex items-center justify-between gap-3 text-xs">
+              <div class="flex items-center gap-1.5">
+                <span>${meta.icon}</span>
+                <span class="font-bold text-slate-800">${escapeHtml(it.itemName)}</span>
+              </div>
+              <span class="text-slate-500 shrink-0">${it.studentNum}번</span>
+            </li>
+          `;
+        }).join('');
+
+        const popupContent = `
+          <div class="min-w-[200px] max-w-[260px]">
+            <div class="flex items-center justify-between pb-2 mb-1.5 border-b border-slate-200">
+              <div class="font-bold text-base text-slate-800">${flag} ${group.countryName}</div>
+              <span class="bg-amber-100 text-amber-800 text-xs font-black px-2 py-0.5 rounded-full">총 ${count}개</span>
+            </div>
+            <ul class="max-h-48 overflow-y-auto pr-1">
+              ${listHtml}
+            </ul>
+          </div>
+        `;
+
+        const marker = L.marker([group.lat, group.lng], { icon: icon });
+        marker.bindPopup(popupContent);
+        markersLayer.addLayer(marker);
+      });
+    }
+
+    function renderFeedList(items) {
+      const feedContainer = document.getElementById('dashboard-feed-list');
+      document.getElementById('feed-count-badge').textContent = `${items.length}건`;
+
+      if (items.length === 0) {
+        feedContainer.innerHTML = `
+          <div class="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400">
+            <i class="fa-solid fa-box-open text-4xl mb-3 text-slate-300"></i>
+            <p class="text-sm font-bold text-slate-500">아직 등록된 물건이 없어요</p>
+            <p class="text-xs mt-1">학생들이 물건을 입력하면 이곳에 실시간으로 나타납니다.</p>
+          </div>
+        `;
+        return;
+      }
+
+      // 최신 항목이 맨 위에 오도록 역순 정렬
+      const reversed = items.slice().reverse();
+
+      feedContainer.innerHTML = reversed.map(item => {
+        const meta = CATEGORY_META[item.category] || CATEGORY_META['기타'];
+        const cObj = COUNTRIES_DB.find(c => c.name === item.countryName);
+        const flag = cObj ? cObj.flag : '🌍';
+
+        return `
+          <div class="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs hover:border-indigo-200 transition flex items-start justify-between gap-2">
+            <div class="space-y-1.5 min-w-0">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="text-[11px] font-bold px-2 py-0.5 rounded-md border ${meta.badgeClass}">
+                  ${meta.icon} ${item.category}
+                </span>
+                <span class="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md">
+                  ${flag} ${item.countryName}
+                </span>
+                <span class="text-[11px] font-bold text-slate-400">· ${item.studentNum}번</span>
+              </div>
+              <div class="font-bold text-slate-800 text-sm truncate">
+                ${escapeHtml(item.itemName)}
+              </div>
+            </div>
+            <button onclick="deleteSingleItem('${item.id}', '${escapeHtml(item.itemName)}')" title="오기입 데이터 삭제"
+              class="w-7 h-7 rounded-lg text-slate-300 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center shrink-0 transition">
+              <i class="fa-solid fa-xmark text-xs"></i>
+            </button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    /**
+     * XSS 방지용 HTML 이스케이프 함수
+     */
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+  </script>
+</body>
+</html>
